@@ -16,4 +16,11 @@ RUN mkdir /etc/container_environment \
     && \
     mkdir /etc/runit_init.d
 
+# add user 
+RUN adduser -h /etc/user-service -s /bin/sh -D user-service -u 2000
+
+# create non-privileged
+ADD user-service.init /etc/service/user-service/run
+RUN chmod +x /etc/service/user-service/run
+
 CMD ["/sbin/start_runit"]

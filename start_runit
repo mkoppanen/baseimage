@@ -1,9 +1,9 @@
 #!/bin/sh
 
-# Set environment variables
-env -u PWD -u HOME -u TERM \
-	| awk -F= '{ st = index($0, "="); print $1 "\=\"" substr($0, st + 1) "\"" }' \
-	> /etc/envvars
+# Set environment variable dir
+mkdir /etc/envvars
+env -u PWD -u HOME -u TERM -u OLDPWD \
+	| awk -F= '{ $2 > /etc/envvars/$1 }'
 
 # Run pre-init scripts
 files=$(ls /etc/runit_init.d)
@@ -29,6 +29,7 @@ fi
 
 echo >&2 "- pre-init complete"
 
+echo "starting /etc/service"
 /sbin/runsvdir -P /etc/service &
 runsvdir_pid=$!
 

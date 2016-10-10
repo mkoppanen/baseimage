@@ -1,0 +1,6 @@
+#!/bin/sh
+
+echo "starting /etc/user-service"
+chown -R user-service:user-service /etc/user-service
+
+exec /sbin/chpst -e /etc/envvars -u user-service:user-service /sbin/runsvdir /etc/user-service
