@@ -1,1 +1,1 @@
-Simple image based on alpine:latest using runit
+Simple image based on alpine:latest using runit.
