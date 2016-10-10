@@ -1,8 +1,12 @@
 FROM alpine:latest
 
-ONBUILD RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories \
+RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories \
     && \
-    apk --update upgrade && apk add runit && rm -rf /var/cache/apk/*
+    apk --update upgrade \
+    && \
+    apk add runit \
+    && \
+    rm -rf /var/cache/apk/*
 
 ADD start_runit /sbin/
 
