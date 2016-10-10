@@ -1,7 +1,9 @@
 #!/bin/sh
 
 # Set environment variables
-env | awk -F= '{ st = index($0, "="); print $1 "\=\"" substr($0, st + 1) "\"" }' > /etc/envvars
+env -u PWD -u HOME -u TERM \
+	| awk -F= '{ st = index($0, "="); print $1 "\=\"" substr($0, st + 1) "\"" }' \
+	> /etc/envvars
 
 # Run pre-init scripts
 files=$(ls /etc/runit_init.d)
