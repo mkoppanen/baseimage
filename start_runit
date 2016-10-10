@@ -2,8 +2,8 @@
 
 # Set environment variable dir
 mkdir /etc/envvars
-env -u PWD -u HOME -u TERM -u OLDPWD \
-	| awk -F= '{ $2 > /etc/envvars/$1 }'
+env -u PWD -u HOME -u TERM -u OLDPWD -u _ \
+    | awk -F'=' '{ $2 > "/etc/envvars/"$1 }'
 
 # Run pre-init scripts
 files=$(ls /etc/runit_init.d)
