@@ -1,0 +1,34 @@
+#!/bin/sh
+
+# Set environment variables
+env > /etc/envvars
+
+# Run pre-init scripts
+files=$(ls /etc/runit_init.d)
+
+run_script() {
+    local file=$1
+
+    echo >&2 "- running ${file}"
+    ($file) || (rc=$?; echo "${file} failed: ${rc}"; exit $rc)
+}
+
+echo >&2 "- pre-init"
+
+for file in $files
+do
+    run_script $file	
+done
+
+if test -f /etc/rc.local && test -x /etc/rc.local
+then
+    run_script /etc/rc.local
+fi
+
+echo >&2 "- pre-init complete"
+
+/sbin/runsvdir -P /etc/service &
+runsvdir_pid=$!
+
+trap "echo terminating on signal.. && kill $runsvdir_pid && wait $runsvdir_pid" SIGQUIT SIGINT SIGTERM SIGHUP
+wait $runsvdir_pid
