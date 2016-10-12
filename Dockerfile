@@ -4,7 +4,7 @@ RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repos
     && \
     apk --update upgrade \
     && \
-    apk add runit \
+    apk add runit gettext \
     && \
     rm -rf /var/cache/apk/*
 
