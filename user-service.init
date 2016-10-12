@@ -5,7 +5,7 @@ services=$(ls /etc/user-service)
 
 for service in $services
 do
-    mkdir "/etc/user-service/${service}/supervise"
+    test -d "/etc/user-service/${service}/supervise" || mkdir "/etc/user-service/${service}/supervise"
 done
 
 chown -R user-service:user-service /etc/user-service

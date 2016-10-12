@@ -1,6 +1,7 @@
 #!/bin/sh
 
 # Set environment variable dir
+rm -rf /etc/envvars
 mkdir /etc/envvars
 env -u PWD -u HOME -u TERM -u OLDPWD -u _ \
     | awk -F'=' '{ $2 > "/etc/envvars/"$1 }'
