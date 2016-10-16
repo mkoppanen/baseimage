@@ -6,21 +6,24 @@ mkdir /etc/envvars
 env -u PWD -u HOME -u TERM -u OLDPWD -u _ \
     | awk -F'=' '{ $2 > "/etc/envvars/"$1 }'
 
-# Run pre-init scripts
-files=$(ls /etc/runit_init.d)
-
 run_script() {
     local file=$1
 
-    echo >&2 "- running ${file}"
-    ($file) || (rc=$?; echo "${file} failed: ${rc}"; exit $rc)
+    if test -x "${file}"
+    then
+    	echo >&2 "- running ${file}"
+    	($file) || (rc=$?; echo "${file} failed: ${rc}"; exit $rc)
+    else
+    	echo >&1 "- ${file} is not executable, skipping"
+    fi
 }
 
 echo >&2 "- pre-init"
 
-for file in $files
+# Run pre-init scripts
+for file in $(find /etc/runit_init.d -type f)
 do
-    run_script $file	
+		run_script $file
 done
 
 if test -f /etc/rc.local && test -x /etc/rc.local
