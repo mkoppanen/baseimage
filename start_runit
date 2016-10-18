@@ -1,10 +1,24 @@
 #!/bin/sh
+#
+# The init order is as follows:
+#   scripts in /etc/runit_init.d
+#
+#   Start services in /etc/service
+#
+#   Start services in /etc/user-service
+#
+#   if exists /etc/rc.local 
+#
 
-# Set environment variable dir
-rm -rf /etc/envvars
-mkdir /etc/envvars
+# Clean the env vars just in case
+if test -d /etc/runit_envvars
+then
+    find /etc/runit_envvars -type f -exec rm {} \;
+fi
+
+# Write the environment
 env -u PWD -u HOME -u TERM -u OLDPWD -u _ \
-    | awk -F'=' '{ $2 > "/etc/envvars/"$1 }'
+    | awk -F'=' '{ $2 > "/etc/runit_envvars/"$1 }'
 
 run_script() {
     local file=$1
@@ -20,22 +34,40 @@ run_script() {
 
 echo >&2 "- pre-init"
 
-# Run pre-init scripts
+# Run scripts in /etc/runit_init.d
 for file in $(find /etc/runit_init.d -type f)
 do
-		run_script $file
+	run_script $file
 done
 
-if test -f /etc/rc.local && test -x /etc/rc.local
+echo >&2 "- pre-init complete"
+
+echo >&2 "starting /etc/service"
+/sbin/runsvdir -P /etc/service &
+runsvdir_pid=$!
+
+echo >&2 "starting /etc/user-service"
+chown -R user-service:user-service /etc/user-service
+/sbin/chpst -e /etc/runit_envvars -u user-service:user-service /sbin/runsvdir /etc/user-service &
+runsvdir_user_pid=$!
+
+signal_handler() {
+    echo >&2 "terminating on signal.."
+
+    echo >&2 "terminating /etc/user-service"
+    kill -1 $runsvdir_user_pid
+    wait $runsvdir_user_pid
+
+    echo >&2 "terminating /etc/service"
+    kill -1 $runsvdir_pid
+    wait $runsvdir_pid
+}
+
+# Run /etc/rc.local
+if test -f /etc/rc.local
 then
     run_script /etc/rc.local
 fi
 
-echo >&2 "- pre-init complete"
-
-echo "starting /etc/service"
-/sbin/runsvdir -P /etc/service &
-runsvdir_pid=$!
-
-trap "echo terminating on signal.. && kill $runsvdir_pid && wait $runsvdir_pid" SIGQUIT SIGINT SIGTERM SIGHUP
-wait $runsvdir_pid
+trap signal_handler SIGQUIT SIGINT SIGTERM
+wait $runsvdir_pid $runsvdir_user_pid
