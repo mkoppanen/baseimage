@@ -20,6 +20,6 @@ RUN mkdir /etc/runit_envvars \
     && \
     adduser -h /etc/user-service -s /bin/sh -D user-service -u 2000 \
     && \
-    chown -R "user-service:user-service" /etc/user-service
+    chown user-service:user-service /etc/user-service
 
 CMD [ "/sbin/start_runit" ]

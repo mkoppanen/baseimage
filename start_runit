@@ -10,16 +10,6 @@
 #   if exists /etc/rc.local 
 #
 
-# Clean the env vars just in case
-if test -d /etc/runit_envvars
-then
-    find /etc/runit_envvars -type f -exec rm {} \;
-fi
-
-# Write the environment
-env -u PWD -u HOME -u TERM -u OLDPWD -u _ \
-    | awk -F'=' '{ $2 > "/etc/runit_envvars/"$1 }'
-
 run_script() {
     local file=$1
 
@@ -42,14 +32,21 @@ done
 
 echo >&2 "- pre-init complete"
 
+# Write the environment
+env -u PWD -u HOME -u TERM -u OLDPWD -u _ \
+    | awk -F'=' '{ $2 > "/etc/runit_envvars/"$1 }'
+
 echo >&2 "starting /etc/service"
-/sbin/runsvdir -P /etc/service &
+/sbin/chpst -e /etc/runit_envvars /sbin/runsvdir -P /etc/service &
 runsvdir_pid=$!
 
 echo >&2 "starting /etc/user-service"
 chown -R user-service:user-service /etc/user-service
 /sbin/chpst -e /etc/runit_envvars -u user-service:user-service /sbin/runsvdir /etc/user-service &
 runsvdir_user_pid=$!
+
+# Remove the unnecessary files
+rm -rf /etc/runit_envvars
 
 signal_handler() {
     echo >&2 "terminating on signal.."
