@@ -8,7 +8,7 @@ RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repos
     && \
     apk add runit gettext \
     && \
-    rm -rf /var/cache/apk/*
+    rm -rf /var/cache/apk/* \
     && \
     mkdir /etc/runit_envvars \
     && \
