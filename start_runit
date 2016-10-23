@@ -45,9 +45,6 @@ chown -R user-service:user-service /etc/user-service
 /sbin/chpst -e /etc/runit_envvars -u user-service:user-service /sbin/runsvdir /etc/user-service &
 runsvdir_user_pid=$!
 
-# Remove the unnecessary files
-rm -rf /etc/runit_envvars
-
 signal_handler() {
     echo >&2 "terminating on signal.."
 

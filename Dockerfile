@@ -1,5 +1,7 @@
 FROM alpine:latest
 
+ADD start_runit /sbin/
+
 RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories \
     && \
     apk --update upgrade \
@@ -7,10 +9,8 @@ RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repos
     apk add runit gettext \
     && \
     rm -rf /var/cache/apk/*
-
-ADD start_runit /sbin/
-
-RUN mkdir /etc/runit_envvars \
+    && \
+    mkdir /etc/runit_envvars \
     && \
     chmod 750 /etc/runit_envvars \
     && \
