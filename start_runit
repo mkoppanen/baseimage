@@ -36,11 +36,12 @@ echo >&2 "- pre-init"
 for file in $(find /etc/runit_init.d -type f)
 do
 	run_script $file
+    rc=$?
 
-    if [ $? != 0 ]
+    if [ $rc != 0 ]
     then
-        echo "terminating.."
-        exit 1
+        echo "terminating due to failure in /etc/runit_init.d stage"
+        exit $rc
     fi
 done
 
@@ -75,6 +76,12 @@ signal_handler() {
 if test -f /etc/rc.local
 then
     run_script /etc/rc.local
+    rc=$?
+
+    if [ $rc != 0 ]
+        echo "terminating due to failure in /etc/rc.local"
+        exit $rc
+    fi
 fi
 
 trap signal_handler SIGQUIT SIGINT SIGTERM
