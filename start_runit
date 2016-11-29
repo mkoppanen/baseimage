@@ -11,14 +11,22 @@
 #
 
 run_script() {
-    local file=$1
+    local script_file=$1
 
-    if test -x "${file}"
+    if test -x "${script_file}"
     then
-    	echo >&2 "- running ${file}"
-    	($file) || (rc=$?; echo "${file} failed: ${rc}"; exit $rc)
+    	echo >&2 "- running ${script_file}"
+    	$file
+        rc=$?
+
+        if [ $rc != 0 ]
+        then
+            echo >&2 "${script_file} failed with exit code ${rc}"
+            return $rc
+        fi
     else
-    	echo >&1 "- ${file} is not executable, skipping"
+    	echo >&2 "- ${script_file} is not executable, skipping"
+        return 0
     fi
 }
 
@@ -28,6 +36,12 @@ echo >&2 "- pre-init"
 for file in $(find /etc/runit_init.d -type f)
 do
 	run_script $file
+
+    if [ $? != 0 ]
+    then
+        echo "terminating.."
+        exit 1
+    fi
 done
 
 echo >&2 "- pre-init complete"
