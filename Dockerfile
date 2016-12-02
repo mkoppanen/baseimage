@@ -16,7 +16,7 @@ RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repos
     && \
     chmod 750 /etc/runit_envvars \
     && \
-    chmod a+x /sbin/start_runit \
+    chmod a+x /sbin/start_runit /usr/local/bin/jq \
     && \
     mkdir /etc/runit_init.d \
     && \
