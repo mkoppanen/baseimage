@@ -6,9 +6,11 @@ RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repos
     && \
     apk --update upgrade \
     && \
-    apk add runit gettext jq curl \
+    apk add runit gettext curl \
     && \
     rm -rf /var/cache/apk/* \
+    && \
+    curl -sL https://github.com/stedolan/jq/releases/download/jq-1.5/jq-linux64 -o /usr/bin/jq \
     && \
     mkdir /etc/runit_envvars \
     && \
