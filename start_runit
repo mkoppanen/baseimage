@@ -10,6 +10,8 @@
 #   if exists /etc/rc.local 
 #
 
+echo $$ > /var/run/start_runit.pid
+
 run_script() {
     local script_file=$1
 
@@ -40,10 +42,28 @@ do
 
     if [ $rc != 0 ]
     then
-        echo "terminating due to failure in /etc/runit_init.d stage"
+        echo >&2 "terminating due to failure in /etc/runit_init.d stage"
         exit $rc
     fi
 done
+
+add_finish_script() {
+
+    for run_file in $(find $1 -name run)
+    do
+        service_dir=$(dirname "${run_file}")
+
+        if test ! -f "${service_dir}/finish"
+        then
+            echo >&2 "initialising ${service_dir}/finish"
+            ln -s /sbin/svcfinish "${service_dir}/finish"
+        fi
+    done
+}
+
+# Add finish script so that termination of service terminates container
+add_finish_script /etc/service
+add_finish_script /etc/user-service
 
 echo >&2 "- pre-init complete"
 

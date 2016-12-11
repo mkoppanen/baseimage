@@ -1,6 +1,8 @@
 FROM alpine:latest
 
-ADD start_runit /sbin/
+ADD start_runit        /sbin/
+ADD svcfinish          /sbin/svcfinish
+ADD svcfinish-listener /etc/service/svcfinish-listener/run
 
 RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories \
     && \
@@ -16,12 +18,18 @@ RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repos
     && \
     chmod 750 /etc/runit_envvars \
     && \
-    chmod a+x /sbin/start_runit /usr/local/bin/jq \
+    touch /etc/service/svcfinish-listener/finish \
+    && \
+    chmod a+x /sbin/start_runit /usr/local/bin/jq /sbin/svcfinish /etc/service/svcfinish-listener/run \
     && \
     mkdir /etc/runit_init.d \
     && \
     adduser -h /etc/user-service -s /bin/sh -D user-service -u 2000 \
     && \
-    chown user-service:user-service /etc/user-service
+    chown user-service:user-service /etc/user-service \
+    && \
+    mkfifo /var/run/svcfinish.fifo \
+    && \
+    chmod 666 /var/run/svcfinish.fifo
 
 CMD [ "/sbin/start_runit" ]
