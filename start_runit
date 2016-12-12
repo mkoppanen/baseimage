@@ -10,7 +10,35 @@
 #   if exists /etc/rc.local 
 #
 
-echo $$ > /var/run/start_runit.pid
+exit_if_error() {
+    local code=$1
+    local message=$2
+
+    if [ $code != 0 ]; then
+        echo >&2 "${message}"
+        exit $code
+    fi
+}
+
+create_control_fifo() {
+
+    if test ! -d /var/run/svcfinish
+    then
+        mkdir -p /var/run/svcfinish
+        exit_if_error $? "failed to create /var/run/svcfinish"
+    fi
+
+    if test -e /var/run/svcfinish/control
+    then
+        rm /var/run/svcfinish/control
+    fi
+
+    mkfifo /var/run/svcfinish/control
+    exit_if_error $? "failed to create /var/run/svcfinish/control"
+
+    chmod 666 /var/run/svcfinish/control
+    chmod a+x /sbin/svcfinish
+}
 
 run_script() {
     local script_file=$1
@@ -18,52 +46,74 @@ run_script() {
     if test -x "${script_file}"
     then
         echo >&2 "- running ${script_file}"
-        $file
+        "${script_file}"
         rc=$?
 
-        if [ $rc != 0 ]
-        then
-            echo >&2 "${script_file} failed with exit code ${rc}"
-            return $rc
-        fi
+        exit_if_error $rc "${script_file} failed with exit code ${rc}"
     else
         echo >&2 "- ${script_file} is not executable, skipping"
         return 0
     fi
 }
 
-echo >&2 "- pre-init"
-
-# Run scripts in /etc/runit_init.d
-for file in $(find /etc/runit_init.d -type f)
-do
-    run_script $file
-    rc=$?
-
-    if [ $rc != 0 ]
-    then
-        echo >&2 "terminating due to failure in /etc/runit_init.d stage"
-        exit $rc
-    fi
-done
-
 add_finish_script() {
 
     for run_file in $(find $1 -name run)
     do
         service_dir=$(dirname "${run_file}")
+        finish_script="${service_dir}/finish"
 
-        if test ! -f "${service_dir}/finish"
+        if test ! -e "${finish_script}"
         then
-            echo >&2 "initialising ${service_dir}/finish"
-            ln -s /sbin/svcfinish "${service_dir}/finish"
+            echo >&2 "initialising ${finish_script}"
+            ln -s /sbin/svcfinish "${finish_script}"
+            exit_if_error $? "failed to link ${finish_script}"
         fi
     done
 }
 
+wait_for_finish() {
+
+    local kill_pid_on_exit=$1
+    create_control_fifo
+
+    while true
+    do
+        if read cmd; then
+            case "$cmd" in
+                "exit"*)
+                    local svc_name=$(echo "$cmd" | awk '{ print $2 }')
+                    local exit_code=$(echo "$cmd" | awk '{ print $3 }')
+
+                    echo "${svc_name} exited with code ${exit_code}"
+                    kill $kill_pid_on_exit
+                ;;
+
+                "signal")
+                    return 0
+                ;;
+
+                *) echo 'cycle' ;;
+            esac
+        fi
+    done <"/var/run/svcfinish/control"
+}
+
+echo >&2 "- pre-init"
+
+# Run scripts in /etc/runit_init.d
+for script in $(find /etc/runit_init.d -type f)
+do
+    run_script "$script"
+done
+
 # Add finish script so that termination of service terminates container
 add_finish_script /etc/service
 add_finish_script /etc/user-service
+
+# Put listener in the background
+wait_for_finish $$ &
+wait_for_finish_pid=$!
 
 echo >&2 "- pre-init complete"
 
@@ -80,6 +130,12 @@ chown -R user-service:user-service /etc/user-service
 /sbin/chpst -e /etc/runit_envvars -u user-service:user-service /sbin/runsvdir /etc/user-service &
 runsvdir_user_pid=$!
 
+# Run /etc/rc.local
+if test -f /etc/rc.local
+then
+    run_script /etc/rc.local
+fi
+
 signal_handler() {
     echo >&2 "terminating on signal.."
 
@@ -90,20 +146,11 @@ signal_handler() {
     echo >&2 "terminating /etc/service"
     kill -1 $runsvdir_pid
     wait $runsvdir_pid
+
+    echo >&2 "terminating wait_for_finish"
+    echo "signal" > "/var/run/svcfinish/control"
+    wait $wait_for_finish_pid
 }
 
-# Run /etc/rc.local
-if test -f /etc/rc.local
-then
-    run_script /etc/rc.local
-    rc=$?
-
-    if [ $rc != 0 ]
-    then
-        echo "terminating due to failure in /etc/rc.local"
-        exit $rc
-    fi
-fi
-
 trap signal_handler SIGQUIT SIGINT SIGTERM
-wait $runsvdir_pid $runsvdir_user_pid
+wait $runsvdir_pid $runsvdir_user_pid $wait_for_finish_pid

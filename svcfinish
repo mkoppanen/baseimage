@@ -1,6 +1,14 @@
 #!/bin/sh
+#
+# This script exits the container in case of 
+# any essential program fails. 
+#
 
-if [ $1 -ne 0 ]
+if test -p /var/run/svcfinish/control
 then
-    echo "exit" > /var/run/svcfinish.fifo
+    exec 8<>/var/run/svcfinish/control
+    echo "exit ${PWD} $1" >&8
+    sleep 2
 fi
+
+exit 1
