@@ -20,26 +20,6 @@ exit_if_error() {
     fi
 }
 
-create_control_fifo() {
-
-    if test ! -d /var/run/svcfinish
-    then
-        mkdir -p /var/run/svcfinish
-        exit_if_error $? "failed to create /var/run/svcfinish"
-    fi
-
-    if test -e /var/run/svcfinish/control
-    then
-        rm /var/run/svcfinish/control
-    fi
-
-    mkfifo /var/run/svcfinish/control
-    exit_if_error $? "failed to create /var/run/svcfinish/control"
-
-    chmod 666 /var/run/svcfinish/control
-    chmod a+x /sbin/svcfinish
-}
-
 run_script() {
     local script_file=$1
 
@@ -56,25 +36,32 @@ run_script() {
     fi
 }
 
-add_finish_script() {
+create_control_fifo() {
 
-    for run_file in $(find $1 -name run)
-    do
-        service_dir=$(dirname "${run_file}")
-        finish_script="${service_dir}/finish"
+    local svcfinish_dir=/var/run/svcfinish
 
-        if test ! -e "${finish_script}"
-        then
-            echo >&2 "initialising ${finish_script}"
-            ln -s /sbin/svcfinish "${finish_script}"
-            exit_if_error $? "failed to link ${finish_script}"
-        fi
-    done
+    if test ! -d "${svcfinish_dir}"
+    then
+        mkdir -p "${svcfinish_dir}"
+        exit_if_error $? "failed to create ${svcfinish_dir}"
+    fi
+
+    if test -e "${svcfinish_dir}/control"
+    then
+        rm "${svcfinish_dir}/control"
+    fi
+
+    mkfifo "${svcfinish_dir}/control"
+    exit_if_error $? "failed to create ${svcfinish_dir}/control"
+
+    chmod 666 "${svcfinish_dir}/control"
 }
 
-wait_for_finish() {
+wait_for_svcfinish() {
 
     local kill_pid_on_exit=$1
+    local shutting_down="no"
+
     create_control_fifo
 
     while true
@@ -82,21 +69,62 @@ wait_for_finish() {
         if read cmd; then
             case "$cmd" in
                 "exit"*)
-                    local svc_name=$(echo "$cmd" | awk '{ print $2 }')
-                    local exit_code=$(echo "$cmd" | awk '{ print $3 }')
+                    if test "x${shutting_down}" = "xno"
+                    then
+                        shutting_down="yes"
 
-                    echo "${svc_name} exited with code ${exit_code}"
-                    kill $kill_pid_on_exit
+                        echo "$cmd" | awk '{ printf "%s exited with params: %d %d, terminating container..", $2, $3, $4 }'
+                        echo ""
+
+                        # Stop the service from restarting
+                        local svc_dir=$(echo "$cmd" | awk '{ print $2 }')
+                        if test -p "${svc_dir}/supervise/control"
+                        then
+                            printf x > "${svc_dir}/supervise/control"
+                        fi
+
+                        kill $kill_pid_on_exit
+                    fi
                 ;;
 
                 "signal")
                     return 0
                 ;;
 
-                *) echo 'cycle' ;;
+                *) ;;
             esac
         fi
     done <"/var/run/svcfinish/control"
+}
+
+monitor_essential_services() {
+
+    if [ "$#" -eq 0 ]
+    then
+        echo >&2 "no ESSENTIAL_SERVICES defined, skipping svcfinish"
+        return 0
+    fi
+
+    for svc_dir in $@
+    do
+        if test "x" = "x${svc_dir}"
+        then
+            continue
+        fi
+
+        test -d "${svc_dir}"
+        exit_if_error $? "${svc_dir} is marked in ESSENTIAL_SERVICES but service directory is missing"
+
+        finish_script="${svc_dir}/finish"
+
+        echo >&2 "monitoring ${finish_script} for exit"
+
+        if test ! -e "${finish_script}"
+        then
+            ln -s /sbin/svcfinish "${finish_script}"
+            exit_if_error $? "failed to link ${finish_script}"
+        fi
+    done
 }
 
 echo >&2 "- pre-init"
@@ -108,12 +136,11 @@ do
 done
 
 # Add finish script so that termination of service terminates container
-add_finish_script /etc/service
-add_finish_script /etc/user-service
+monitor_essential_services $ESSENTIAL_SERVICES
 
 # Put listener in the background
-wait_for_finish $$ &
-wait_for_finish_pid=$!
+wait_for_svcfinish $$ &
+wait_for_svcfinish_pid=$!
 
 echo >&2 "- pre-init complete"
 
@@ -122,7 +149,7 @@ env -u PWD -u HOME -u TERM -u OLDPWD -u _ \
     | awk -F'=' '{ $2 > "/etc/runit_envvars/"$1 }'
 
 echo >&2 "starting /etc/service"
-/sbin/chpst -e /etc/runit_envvars /sbin/runsvdir -P /etc/service &
+/sbin/chpst -e /etc/runit_envvars /sbin/runsvdir /etc/service &
 runsvdir_pid=$!
 
 echo >&2 "starting /etc/user-service"
@@ -147,10 +174,10 @@ signal_handler() {
     kill -1 $runsvdir_pid
     wait $runsvdir_pid
 
-    echo >&2 "terminating wait_for_finish"
+    echo >&2 "terminating wait_for_svcfinish_pid"
     echo "signal" > "/var/run/svcfinish/control"
-    wait $wait_for_finish_pid
+    wait $wait_for_svcfinish_pid
 }
 
 trap signal_handler SIGQUIT SIGINT SIGTERM
-wait $runsvdir_pid $runsvdir_user_pid $wait_for_finish_pid
+wait $runsvdir_pid $runsvdir_user_pid $wait_for_svcfinish_pid

@@ -1,5 +1,7 @@
 FROM alpine:latest
 
+ENV ESSENTIAL_SERVICES ""
+
 ADD start_runit        /sbin/
 ADD svcfinish          /sbin/svcfinish
 
@@ -18,6 +20,8 @@ RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repos
     chmod 750 /etc/runit_envvars \
     && \
     chmod a+x /sbin/start_runit /usr/local/bin/jq \
+    && \
+    chmod 755 /sbin/svcfinish \
     && \
     mkdir /etc/runit_init.d \
     && \

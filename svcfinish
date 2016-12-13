@@ -7,8 +7,7 @@
 if test -p /var/run/svcfinish/control
 then
     exec 8<>/var/run/svcfinish/control
-    echo "exit ${PWD} $1" >&8
-    sleep 2
+    echo "exit ${PWD} $1 $2" >&8
 fi
 
 exit 1
