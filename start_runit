@@ -130,7 +130,7 @@ monitor_essential_services() {
 echo >&2 "- pre-init"
 
 # Run scripts in /etc/runit_init.d
-for script in $(find /etc/runit_init.d -type f)
+for script in $(find /etc/runit_init.d -type f | sort)
 do
     run_script "$script"
 done
