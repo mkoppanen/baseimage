@@ -104,6 +104,7 @@ runsvdir_pid=$!
 
 # 4. Start services that run as normal user
 echo >&2 "starting /etc/user-service"
+chown -R user-service:user-service /etc/user-service
 /sbin/chpst -P -e /etc/runit_envvars -u user-service:user-service /sbin/runsvdir /etc/user-service &
 runsvdir_user_pid=$!
 
