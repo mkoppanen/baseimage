@@ -1,0 +1,70 @@
+#!/bin/sh
+
+exit_if_error() {
+    local code=$1
+    local message=$2
+
+    if [ $code != 0 ]; then
+        echo >&2 "${message}"
+        exit $code
+    fi
+}
+
+create_control_fifo() {
+
+    local control_fifo=$1
+
+    if test -e "${control_fifo}"
+    then
+        rm "${control_fifo}"
+    fi
+
+    mkfifo "${control_fifo}"
+    exit_if_error $? "failed to create ${control_fifo}"
+
+    chmod 666 "${control_fifo}"
+}
+
+listen_fifo() {
+
+    local control_fifo=$1
+    local kill_pid_on_exit=$2
+    local shutting_down="no"
+
+    while true
+    do
+        if read cmd; then
+
+            case "$cmd" in
+
+                "signal")
+                    shutting_down="yes"
+                ;;
+
+                # signaled from svcfinish
+                "exit"*)
+                    if test "x${shutting_down}" = "xno"
+                    then
+                        shutting_down="yes"
+
+                        echo "$cmd" | awk '{ printf "%s exited with params: %d %d, terminating container..", $2, $3, $4 }'
+                        echo ""
+
+                        kill $kill_pid_on_exit
+                    fi
+                ;;
+
+                "terminate")
+                    return 0
+                ;;
+
+                *) ;;
+            esac
+        fi
+    done <"${CONTROL_FIFO}"
+
+}
+
+create_control_fifo "$CONTROL_FIFO"
+listen_fifo "$CONTROL_FIFO" $1
+

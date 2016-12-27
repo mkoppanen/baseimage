@@ -9,6 +9,15 @@
 #
 #   if exists /etc/rc.local 
 #
+#  Shutdown:
+#
+#   scripts in /etc/runit_finish.d
+#   
+#   stop services in /etc/user-service
+#
+#   stop services in /etc/service
+
+
 
 exit_if_error() {
     local code=$1
@@ -36,68 +45,7 @@ run_script() {
     fi
 }
 
-create_control_fifo() {
-
-    local svcfinish_dir=/var/run/svcfinish
-
-    if test ! -d "${svcfinish_dir}"
-    then
-        mkdir -p "${svcfinish_dir}"
-        exit_if_error $? "failed to create ${svcfinish_dir}"
-    fi
-
-    if test -e "${svcfinish_dir}/control"
-    then
-        rm "${svcfinish_dir}/control"
-    fi
-
-    mkfifo "${svcfinish_dir}/control"
-    exit_if_error $? "failed to create ${svcfinish_dir}/control"
-
-    chmod 666 "${svcfinish_dir}/control"
-}
-
-wait_for_svcfinish() {
-
-    local kill_pid_on_exit=$1
-    local shutting_down="no"
-
-    create_control_fifo
-
-    while true
-    do
-        if read cmd; then
-            case "$cmd" in
-                "exit"*)
-                    if test "x${shutting_down}" = "xno"
-                    then
-                        shutting_down="yes"
-
-                        echo "$cmd" | awk '{ printf "%s exited with params: %d %d, terminating container..", $2, $3, $4 }'
-                        echo ""
-
-                        # Stop the service from restarting
-                        local svc_dir=$(echo "$cmd" | awk '{ print $2 }')
-                        if test -p "${svc_dir}/supervise/control"
-                        then
-                            printf x > "${svc_dir}/supervise/control"
-                        fi
-
-                        kill $kill_pid_on_exit
-                    fi
-                ;;
-
-                "signal")
-                    return 0
-                ;;
-
-                *) ;;
-            esac
-        fi
-    done <"/var/run/svcfinish/control"
-}
-
-monitor_essential_services() {
+link_svc_finish() {
 
     if [ "$#" -eq 0 ]
     then
@@ -112,22 +60,26 @@ monitor_essential_services() {
             continue
         fi
 
-        test -d "${svc_dir}"
-        exit_if_error $? "${svc_dir} is marked in ESSENTIAL_SERVICES but service directory is missing"
-
         finish_script="${svc_dir}/finish"
 
-        echo >&2 "monitoring ${finish_script} for exit"
+        echo >&2 " - monitoring ${finish_script} for exit"
 
         if test ! -e "${finish_script}"
         then
-            ln -s /sbin/svcfinish "${finish_script}"
+            ln -s /sbin/svc_finish "${finish_script}"
             exit_if_error $? "failed to link ${finish_script}"
         fi
     done
 }
 
+# Run init in stages
+
+# 1. First create environment and run /etc/runit_init.d scripts
 echo >&2 "- pre-init"
+
+# Write the environment
+env -u PWD -u HOME -u TERM -u OLDPWD -u _ \
+    | awk -F'=' '{ $2 > "/etc/runit_envvars/"$1 }'
 
 # Run scripts in /etc/runit_init.d
 for script in $(find /etc/runit_init.d -type f | sort)
@@ -135,36 +87,47 @@ do
     run_script "$script"
 done
 
-# Add finish script so that termination of service terminates container
-monitor_essential_services $ESSENTIAL_SERVICES
-
-# Put listener in the background
-wait_for_svcfinish $$ &
-wait_for_svcfinish_pid=$!
-
 echo >&2 "- pre-init complete"
 
-# Write the environment
-env -u PWD -u HOME -u TERM -u OLDPWD -u _ \
-    | awk -F'=' '{ $2 > "/etc/runit_envvars/"$1 }'
+# 2. listener
+echo >&2 "starting svc_monitor"
 
+# Add finish script so that termination of service terminates container
+link_svc_finish $ESSENTIAL_SERVICES
+/sbin/chpst -P -e /etc/runit_envvars /sbin/svc_monitor $$ &
+svc_monitor_pid=$!
+
+# 3. Start services
 echo >&2 "starting /etc/service"
-/sbin/chpst -e /etc/runit_envvars /sbin/runsvdir /etc/service &
+/sbin/chpst -P -e /etc/runit_envvars /sbin/runsvdir /etc/service &
 runsvdir_pid=$!
 
+# 4. Start services that run as normal user
 echo >&2 "starting /etc/user-service"
-chown -R user-service:user-service /etc/user-service
-/sbin/chpst -e /etc/runit_envvars -u user-service:user-service /sbin/runsvdir /etc/user-service &
+/sbin/chpst -P -e /etc/runit_envvars -u user-service:user-service /sbin/runsvdir /etc/user-service &
 runsvdir_user_pid=$!
 
-# Run /etc/rc.local
+# 5. Execute /etc/rc.local if exists
 if test -f /etc/rc.local
 then
     run_script /etc/rc.local
 fi
 
 signal_handler() {
+
+    local control_fifo=$1
+
+    # Ensure services wont restart
     echo >&2 "terminating on signal.."
+    echo "signal" > "${control_fifo}"
+
+    if test -d /etc/runit_finish.d
+    then
+        for script in $(find /etc/runit_finish.d -type f | sort)
+        do
+            run_script "$script"
+        done
+    fi
 
     echo >&2 "terminating /etc/user-service"
     kill -1 $runsvdir_user_pid
@@ -174,10 +137,10 @@ signal_handler() {
     kill -1 $runsvdir_pid
     wait $runsvdir_pid
 
-    echo >&2 "terminating wait_for_svcfinish_pid"
-    echo "signal" > "/var/run/svcfinish/control"
-    wait $wait_for_svcfinish_pid
+    echo >&2 "terminating listen_control_fifo"
+    echo "terminate" > "${control_fifo}"
+    wait $svc_monitor_pid
 }
 
-trap signal_handler SIGQUIT SIGINT SIGTERM
-wait $runsvdir_pid $runsvdir_user_pid $wait_for_svcfinish_pid
+trap "signal_handler ${CONTROL_FIFO}" SIGQUIT SIGINT SIGTERM
+wait $runsvdir_pid $runsvdir_user_pid $svc_monitor_pid

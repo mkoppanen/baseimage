@@ -1,0 +1,14 @@
+#!/bin/sh
+#
+# This script exits the container in case of 
+# any essential program fails. 
+#
+
+touch "${PWD}/down"
+
+if test -p "${CONTROL_FIFO}"
+then
+    echo "exit ${PWD} $1 $2" >"${CONTROL_FIFO}"
+fi
+
+exit 0

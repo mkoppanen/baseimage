@@ -1,9 +1,11 @@
 FROM alpine:latest
 
 ENV ESSENTIAL_SERVICES ""
+ENV CONTROL_FIFO /var/run/start_runit.control
 
 ADD start_runit        /sbin/
-ADD svcfinish          /sbin/svcfinish
+ADD svc_monitor        /sbin/svc_monitor
+ADD svc_finish         /sbin/svc_finish
 
 RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories \
     && \
@@ -21,7 +23,7 @@ RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repos
     && \
     chmod a+x /sbin/start_runit /usr/local/bin/jq \
     && \
-    chmod 755 /sbin/svcfinish \
+    chmod 755 /sbin/svc_finish /sbin/svc_monitor \
     && \
     mkdir /etc/runit_init.d \
     && \
